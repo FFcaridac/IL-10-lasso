@@ -1,0 +1,55 @@
+## develop and validate Nomogram 
+library(rmda)
+library(pROC)
+library(nomogramFormula)
+library(rms)
+rm(list=ls()) ###clear the data
+### build a nomogram
+mydata<-read.csv(file = "c:/Users/79871/Desktop/0407IL10/LASSO/dataNomo.csv")
+
+mydata_copy<-mydata
+mydata$death<-factor(mydata$death,levels = c(0,1),labels = c("alive","death"))
+mydata$IL10Bi<-factor(mydata$IL10Bi,levels = c(0,1),labels = c("IL10<59","IL10>59"))
+mydata$IL10Bi<-factor(mydata$IL10Bi,levels = c(0,1),labels = c("Low-IL10","High-IL10"))
+mydata$AgeBi<-factor(mydata$AgeBi,levels = c(0,1),labels = c("Youth","Elderly"))
+dd=datadist(mydata)
+option<-options(datadist="dd")
+formula<-as.formula(death~IL10Bi+AgeBi+TT+CKMB)
+model<-lrm(formula,data=mydata_copy,x=TRUE,y=TRUE)
+model  #### run logistic regression analysis first
+OR<-exp(model$coefficients)
+OR
+Nomogram_1<-nomogram(model,fun = function(x)1/(1+exp(-x)),lp=F,fun.at=c(0.1,0.3,0.5,0.5,0.7,0.9),funlabel="Risk")
+plot(Nomogram_1)
+
+plot(Nomogram_1,xfrac=.35,cex.var=1.6,cex.axis=1.4,tcl=-0.5,lmgp=0.3,label.every=1,col.grid=gray(c(0.8,0.95)))
+options(option)
+
+
+### ROC curve
+mydata<-read.csv(file = "c:/Users/79871/Desktop/0407IL10/LASSO/dataNomo.csv")
+dd=datadist(mydata)
+option<-options(datadist="dd")
+formula<-as.formula(death~IL10+Age+CKMB+WBC)
+model<-lrm(formula,data=mydata_copy,x=TRUE,y=TRUE)
+OR<-exp(model$coefficients)
+Nomogram_1<-nomogram(model,fun = function(x)1/(1+exp(-x)),lp=F,fun.at=c(0.1,0.3,0.5,0.5,0.7,0.9),funlabel="Risk")
+plot(Nomogram_1)
+options(option)
+results<-formula_rd(nomogram = Nomogram_1)
+mydata$points<-points_cal(formula = results$formula,rd=mydata)
+model_ROC<-glm(formula,data=mydata,family = binomial())
+mydata$predvalue<-predict(model_ROC,type = "response")
+ROC<-roc(mydata$death,mydata$predvalue)
+auc(ROC)
+ci(auc(ROC))
+plot(1-ROC$specificities,ROC$sensitivities,type="l",col="blue",lty=1,xlab="1-Specificity",ylab="Sensitivity",lwd=2)
+abline(0,1)
+
+### calibration curve
+cal<-calibrate(model,method = "boot",B=1000)
+plot(cal,xlim=c(0,1),ylim=c(0,1),xlab="Predicted Probability",ylab="Observed Probability",subtitles=FALSE)
+###  DCA 
+model_DCA<-decision_curve(formula,data=mydata_copy,family=binomial(link="logit"),threshold=seq(0,1,by=0.01), confidence.intervals=0.95,study.design="case-control",population.prevalence=0.7)
+
+plot_decision_curve(model_DCA,curve.names = c("Nomogram"),xlim = c(0,1.0),cost.benefit.axis = FALSE,col=c("red"),confidence.intervals = FALSE,standardize = FALSE)
